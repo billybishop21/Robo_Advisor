@@ -12,6 +12,15 @@ def parse_int(n):
     except ValueError:
         return float("nan")
 
+def parse_float(n):
+    """
+    Securely converts a non-numeric value to float.
+    """
+    try:
+        return float(n)
+    except ValueError:
+        return float("nan")
+
 
 def build_validation_result(is_valid, violated_slot, message_content):
     """
@@ -25,6 +34,51 @@ def build_validation_result(is_valid, violated_slot, message_content):
         "violatedSlot": violated_slot,
         "message": {"contentType": "PlainText", "content": message_content},
     }
+
+def validate_data(age, investment_amount, risk_level):
+    # Validate age
+    if age is not None:
+        age = parse_int(age)
+        if age <= 0 > 65:
+            return build_validation_result(
+                False,
+                "Age",
+                "I'm sorry, your age is not eligible for investment."
+            )
+    # Validate investment amount
+    if investment_amount is not None:
+        investment_amount = parse_int(investment_amount)
+        if investment_amount <= 5000:
+            return build_validation_result(
+                False,
+                "amount",
+                "I'm sorry, your investment amount must be greater than $5,000."
+            )
+
+    # Validate risk_level
+    if risk_level is not None:
+        risk_level = parse_float(risk_level)
+        if risk_level is None:
+            return build_validation_result(
+                False,
+                "risk level",
+                "I'm sorry, we need the appropriate risk level."
+            )
+        
+
+    return build_validation_result(True, None, None)
+    
+def get_recommendation(risk_level):
+    recommendation = ""
+    if risk_level == "None" or "none":
+        recommendation = "A risk level of 'None' results in the following allocation: 100% bonds (AGG), 0% equities (SPY)"
+    elif risk_level == "Low" or "low":
+        recommendation = "A risk level of 'Low' results in the following allocation: 60% bonds (AGG), 40% equities (SPY)"
+    elif risk_level == "Medium" or "medium":
+        recommendation = "A risk level of 'Medium' results in the following allocation: 40% bonds (AGG), 60% equities (SPY)"
+    elif risk_level == "High" or "high":
+        recommendation = "A risk level of 'High' results in the following allocation: 20% bonds (AGG), 80% equities (SPY)"
+    return recommendation
 
 
 ### Dialog Actions Helper Functions ###
@@ -118,13 +172,64 @@ def recommend_portfolio(intent_request):
     Performs dialog management and fulfillment for recommending a portfolio.
     """
 
+    # Gets slots values 
     first_name = get_slots(intent_request)["firstName"]
     age = get_slots(intent_request)["age"]
     investment_amount = get_slots(intent_request)["investmentAmount"]
     risk_level = get_slots(intent_request)["riskLevel"]
+
+    # Gets the invocation source, for Lex dialogs "DialogCodeHook" is expected.
     source = intent_request["invocationSource"]
 
-    # YOUR CODE GOES HERE!
+    if source == "DialogCodeHook":
+        # This code performs basic validation on the supplied input slots.
+
+        # gets all the slots
+        slots = get_slots(intent_request)
+
+        # validates user's input uing validate_data function
+        validation_result = validate_data(age, investment_amount, risk_level)
+
+        # # validates and gets recommendation based on risk level
+        recommendation = get_recommendation(risk_level)
+
+        # If the data provided by the user is not valid,
+        # the elicitSlot dialog action is used to re-prompt for the first violation detected.
+        if not validation_result["isValid"]:
+            slots[validation_result["violatedSlot"]] = None  # Cleans invalid slot
+
+            # Returns an elicitSlot dialog to request new data for the invalid slot
+            return elicit_slot(
+                intent_request["sessionAttributes"],
+                intent_request["currentIntent"]["name"],
+                slots,
+                validation_result["violatedSlot"],
+                validation_result["message"],
+            )
+
+        # Fetch current session attributes
+        output_session_attributes = intent_request["sessionAttributes"]
+
+        # Once all slots are valid, a delegate dialog is returned to Lex to choose the next course of action.
+        return delegate(output_session_attributes, get_slots(intent_request))
+    
+    risk_level = parse_float(risk_level)
+
+
+    # Return a message with conversion's result.
+    return close(
+        intent_request["sessionAttributes"],
+        "Fulfilled",
+        {
+            "contentType": "PlainText",
+            "content": """Thank you for your information;
+            Your investment risk level of {} results in ;
+            the following allocation: 
+            {} 
+            """.format(risk_level, get_recommendation()
+            ),
+        },
+    )
 
 
 ### Intents Dispatcher ###
